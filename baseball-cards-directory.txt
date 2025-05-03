@@ -1,0 +1,34 @@
+.
+├── Makefile
+├── README.md
+├── requirements.txt
+├── .env.example
+├── .pre‑commit-config.yaml
+├── docker
+│   └── Dockerfile
+├── collector
+│   ├── __init__.py
+│   └── adapters
+│       ├── __init__.py
+│       └── ebay.py
+├── database
+│   ├── __init__.py
+│   └── models.py
+├── analyzer
+│   ├── __init__.py
+│   └── analyzer.py
+├── cli.py
+├── data
+│   └── checklists.csv
+├── monitoring
+│   └── grafana_dashboard.json
+├── docs
+│   └── playbook.md
+├── tests
+│   ├── __init__.py
+│   ├── test_collector.py
+│   └── fixtures
+│       └── ebay_browse_sample.json
+└── .github
+    └── workflows
+        └── ci.yml

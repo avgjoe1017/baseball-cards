@@ -1,0 +1,12 @@
+aiohttp==3.9.5
+click==8.1.7
+pandas==2.2.2
+prometheus-client==0.20.0
+psycopg[binary]>=3.2.2 # Updated from 3.1.18 for Python 3.13 compatibility
+python-dotenv==1.0.1
+requests==2.32.2
+sqlalchemy==2.0.29
+tenacity==8.2.3
+pytest==8.2.0
+Flask==3.0.3 # Added for eBay notification endpoint
+cryptography>=42.0.0 # Added for eBay signature verification

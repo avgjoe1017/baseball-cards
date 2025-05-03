@@ -1,0 +1,104 @@
+Baseball Card Deal Finder – Product Specification Document (PSD)
+
+### 1. Purpose & Audience
+
+A single‑user tool that automatically surfaces *undervalued graded baseball cards* on eBay (v1) by comparing live listings against 90‑day market comps. This PSD guides initial build and serves as the baseline for future iterations.
+
+### 2. Problem Statement
+
+Manual hunting for card deals is time‑consuming, error‑prone, and dependent on scattered data. A focused crawler + analyzer can turn hours of browsing into actionable alerts in minutes.
+
+### 3. Goals (MVP)
+
+* **Accurate comps**: 90‑day median & sales velocity per card/grade.
+* **Deal detection**: Alert when listing ≤ 70 % of median (≥ 3 recent comps).
+* **One marketplace**: eBay Browse API only.
+* **Hourly refresh**, automated via cron in Docker.
+* **CLI output + email push** (Pushbullet acceptable) – no GUI.
+
+### 4. Non‑Goals (v1)
+
+* No image‑based condition scoring.
+* No multi‑marketplace support.
+* No mobile app or web dashboard.
+
+### 5. Success Metrics
+
+| Metric                      | Target                                                       |
+| --------------------------- | ------------------------------------------------------------ |
+| True positive deal hit‑rate | ≥ 75 % (listing sells ≥ 10 % above buy price within 30 days) |
+| Average crawl success       | ≥ 98 % executions without fatal error                        |
+| API quota usage             | ≤ 80 % daily cap                                             |
+
+### 6. Primary Use Case
+
+> *“As the owner, I want to receive an email when a PSA 10 Ken Griffey Jr. 1989 Upper Deck listing is 30 % below its recent market price so I can buy it immediately.”*
+
+### 7. Feature Breakdown
+
+1. **Collector Service**
+
+   * Browse API calls (search, item).
+   * Rate‑limit middleware (token bucket, retry‑with‑jitter).
+   * Stores raw JSON in S3‑style local folder for audit.
+2. **Normalizer**
+
+   * Maps listings → canonical card ID using year, set, #, grade.
+   * Reference checklist CSV (TradingCardDB) pre‑loaded.
+3. **DB Writer**
+
+   * PostgreSQL via SQLAlchemy.
+   * Tables: `cards`, `sales_history`, `current_listings`.
+4. **Analyzer**
+
+   * Materialized views compute 30/90‑day medians, velocity.
+   * Detects undervalued listings; writes `alerts` table.
+5. **Notifier**
+
+   * Emails aggregated alert digest; CLI can print JSON.
+6. **Observability**
+
+   * Prometheus exporters for crawl\_success, api\_429s, queue\_depth.
+
+### 8. Data & Integrations
+
+* **eBay Browse API** – OAuth2; 5 000 req/day base.
+* **PSA Pop Report API** – weekly pull (phase 2).
+* **Prometheus + Grafana** – local docker‑compose.
+
+### 9. Security / Compliance
+
+* Secrets stored in Docker secrets file; never in git.
+* No personal buyer data stored.
+* Adhere to eBay Developer ToS, rate limits, data‑retention rules.
+
+### 10. Risks & Mitigations
+
+| Risk                 | Impact        | Mitigation                                            |
+| -------------------- | ------------- | ----------------------------------------------------- |
+| eBay quota too low   | Miss listings | Submit early for limit raise; optimize queries        |
+| Mis‑mapping listings | False alerts  | Tight regex + manual spot checks weekly               |
+| API change           | Downtime      | Wrap calls in adapter layer; nightly integration test |
+
+### 11. Milestones
+
+| Date       | Deliverable                                          |
+| ---------- | ---------------------------------------------------- |
+| **Week 0** | Finalize PSD, checklist CSV imported                 |
+| **Week 1** | Collector + rate limiter functional                  |
+| **Week 2** | DB schema live; normalizer working                   |
+| **Week 3** | Analyzer + alert logic; CLI output                   |
+| **Week 4** | Email notifier; dockerized cron; basic Grafana board |
+| **Week 5** | Documentation; first live deal flip report           |
+
+### 12. Open Questions
+
+1. Threshold fine‑tuning – fixed 70 % or dynamic z‑score?
+2. Include raw shipping cost in valuation?
+3. Accept offers vs BIN only?
+
+---
+
+**Author:** ChatGPT – 2025‑05‑02
+
+> *Simple equals strong. This PSD locks MVP scope and success measures. Iterate only after first profitable flip.*
