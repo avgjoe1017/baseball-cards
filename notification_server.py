@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from dotenv import load_dotenv
-from flask import Flask, Response, request
+from flask import Flask, Response, jsonify, request
 
 load_dotenv()
 
@@ -78,6 +78,37 @@ def verify_signature(request_body_bytes: bytes, signature_header: str):
         return False
     except Exception:
         return False
+
+
+@app.route("/", methods=["GET"])
+def handle_ebay_validation():
+    challenge_code = request.args.get("challenge_code")
+    if not challenge_code:
+        print("Validation attempt missing challenge code")
+        return "Challenge code missing", 400
+
+    verification_token = os.environ.get("EBAY_VERIFICATION_TOKEN")
+    if not verification_token:
+        print("ERROR: EBAY_VERIFICATION_TOKEN environment variable not set!")
+        return "Server configuration error", 500
+
+    endpoint = "https://baseball-cards.onrender.com"  # Must match eBay config
+
+    # Hash Calculation (SHA256, Hex Digest)
+    hasher = hashlib.sha256()
+    hasher.update(challenge_code.encode("utf-8"))
+    hasher.update(verification_token.encode("utf-8"))
+    hasher.update(endpoint.encode("utf-8"))
+    response_hash = hasher.hexdigest()
+
+    print(f"Received challenge code: {challenge_code}")  # Temporary logging
+    print(f"Calculated response hash: {response_hash}")  # Temporary logging
+
+    # Prepare and return JSON response
+    response_data = {"challengeResponse": response_hash}
+    response = jsonify(response_data)
+    response.status_code = 200
+    return response
 
 
 @app.route("/ebay-notifications", methods=["GET", "POST"])
