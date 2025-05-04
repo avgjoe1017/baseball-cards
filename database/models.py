@@ -1,14 +1,45 @@
 # database/models.py
+import os
 from datetime import datetime
 
 from dotenv import load_dotenv
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer, String,
-                        Text, UniqueConstraint)
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+)
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
 Base = declarative_base()
+
+# Database connection setup
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def get_engine():
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is not set.")
+    return create_engine(DATABASE_URL)
+
+
+# Update SessionLocal to use the helper function.
+def get_session():
+    engine = get_engine()
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+
+
+# Update init_db to use the helper function.
+def init_db():
+    engine = get_engine()
+    Base.metadata.create_all(bind=engine)
 
 
 class Card(Base):
