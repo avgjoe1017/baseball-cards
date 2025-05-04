@@ -5,8 +5,12 @@ import click
 from dotenv import load_dotenv
 
 from collector.adapters.ebay import fetch_cards
+from database.models import init_db
 
 load_dotenv()
+
+# Initialize the database schema
+init_db()
 
 
 @click.group()
