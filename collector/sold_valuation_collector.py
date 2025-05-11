@@ -160,7 +160,8 @@ def collect_all_sold_and_valuations():
 
                 if not isinstance(fetched_data_map, dict):
                     logging.error(
-                        f"Site function {module_name}.{function_name} for {site_name} did not return a dictionary. Skipping.")
+                        f"Site function {module_name}.{function_name} for {site_name} did not return a dictionary. Skipping."
+                    )
                     send_dashboard_notification(
                         "ERROR",
                         f"Return type error for {site_name}/{data_type_to_collect}.",
