@@ -7,8 +7,6 @@ import requests
 from aiohttp import ClientSession
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from database.models import Card, get_session
-
 
 # Placeholder function for parsing raw titles
 def parse_raw_title(title: str) -> dict:
@@ -96,7 +94,11 @@ async def _call(session, params):
                 r.raise_for_status()
                 return await r.json()
         else:
+            print(f"HTTPError: {e.status} - {e.message}")
             raise
+    except Exception as e:
+        print(f"Unexpected error during API call: {e}")
+        raise
 
 
 async def fetch_cards(query: str, limit: int = 100):
@@ -106,7 +108,7 @@ async def fetch_cards(query: str, limit: int = 100):
     Args:
         query (str): The search query.
         limit (int): The maximum number of cards to fetch.
-        db (Session, optional): The database session for persisting listings.
+
     Returns:
         list: A list of standardized card dictionaries.
     """
@@ -114,84 +116,49 @@ async def fetch_cards(query: str, limit: int = 100):
 
     async with ClientSession() as session:
         while len(items) < limit:
-            payload = await _call(
-                session,
-                dict(
-                    q=query,
-                    limit=50,
-                    offset=offset,
-                ),
-            )
-            for item in payload.get("itemSummaries", []):
-                # Parse raw title to extract metadata
-                parsed_data = parse_raw_title(item.get("title", ""))
+            try:
+                payload = await _call(
+                    session,
+                    dict(
+                        q=query,
+                        limit=50,
+                        offset=offset,
+                    ),
+                )
+                for item in payload.get("itemSummaries", []):
+                    parsed_data = parse_raw_title(item.get("title", ""))
 
-                # Standardize the card dictionary
-                card_dict = {
-                    "player_name": parsed_data.get("player_name"),
-                    "card_year": parsed_data.get("card_year"),
-                    "card_set": parsed_data.get("set_name"),
-                    "card_number": parsed_data.get("card_number"),
-                    "attributes": parsed_data.get("attributes"),
-                    "grade": parsed_data.get("grade"),
-                    "grading_company": parsed_data.get("grading_company"),
-                    "source": "eBay",
-                    "source_item_id": item.get("itemId"),
-                    "listing_price": float(item.get("price", {}).get("value", 0)),
-                    "currency": item.get("price", {}).get("currency", "USD"),
-                    "listing_date": item.get("itemCreationDate"),
-                    "source_url": item.get("itemWebUrl"),
-                }
+                    card_dict = {
+                        "player_name": parsed_data.get("player_name"),
+                        "card_year": parsed_data.get("card_year"),
+                        "card_set": parsed_data.get("set_name"),
+                        "card_number": parsed_data.get("card_number"),
+                        "attributes": parsed_data.get("attributes"),
+                        "grade": parsed_data.get("grade"),
+                        "grading_company": parsed_data.get("grading_company"),
+                        "source": "eBay",
+                        "source_item_id": item.get("itemId"),
+                        "listing_price": float(item.get("price", {}).get("value", 0)),
+                        "currency": item.get("price", {}).get("currency", "USD"),
+                        "listing_date": item.get("itemCreationDate"),
+                        "source_url": item.get("itemWebUrl"),
+                    }
 
-                # Ensure no None values if avoidable
-                card_dict = {
-                    k: v if v is not None else "" for k, v in card_dict.items()
-                }
+                    card_dict = {
+                        k: v if v is not None else "" for k, v in card_dict.items()
+                    }
+                    items.append(card_dict)
 
-                items.append(card_dict)
-                print(f"DEBUG: Adding listing to session: {card_dict}")
-
-            if "next" not in payload.get("href", ""):
+                if "next" not in payload.get("href", ""):
+                    break
+                offset += 50
+                await asyncio.sleep(RATE_LIMIT_DELAY)
+            except RateLimitException:
+                print("Rate limit hit. Retrying after delay...")
+                await asyncio.sleep(60)  # Wait before retrying
+            except Exception as e:
+                print(f"Error fetching cards: {e}")
                 break
-            offset += 50
-            await asyncio.sleep(RATE_LIMIT_DELAY)  # Respect rate limits
-
-    # Persist Card definitions to the database
-    # This uses the session obtained from get_session(), which is mocked in test_fetch_cards
-    db_session = get_session()
-    try:
-        for item_dict in items:  # item_dict is the standardized card_dict from above
-            # Create a Card object and add it to the session
-            # Ensure field names match the Card model definition
-            card = Card(
-                player=item_dict.get("player_name"),
-                year=(
-                    int(item_dict.get("card_year"))
-                    if item_dict.get("card_year")
-                    and item_dict.get("card_year") != "Unknown Year"
-                    else None
-                ),
-                set_name=item_dict.get("card_set"),
-                card_num=item_dict.get("card_number"),
-                attributes=(
-                    ",".join(item_dict.get("attributes", []))
-                    if isinstance(item_dict.get("attributes"), list)
-                    else item_dict.get("attributes")
-                ),
-                # Note: Card model does not store listing-specific details like price, source_url, grade.
-                # Those belong in ActiveListing or SoldListing.
-                # This part is for creating/retrieving the card *definition*.
-            )
-            db_session.add(card)
-        db_session.commit()
-    except Exception as e:
-        db_session.rollback()
-        print(
-            f"Error during Card object database operations in fetch_cards: {e}"
-        )  # Or use proper logging
-        # Optionally re-raise e if callers should handle it
-    finally:
-        db_session.close()
 
     return items[:limit]
 
