@@ -1,4 +1,5 @@
 PyNaCl
+cachetools
 aiohttp==3.9.5
 click==8.1.7
 pandas==2.2.2
@@ -14,3 +15,6 @@ cryptography>=42.0.0 # Added for eBay signature verification
 gunicorn==20.1.0
 pytest-asyncio==0.26.0
 aioresponses==0.7.8
+beautifulsoup4  # Used in comc_scraper.py for HTML parsing
+streamlit  # Used in dashboard.py for the web interface
+pytz  # Used in sold_valuation_collector.py for timezone handling
