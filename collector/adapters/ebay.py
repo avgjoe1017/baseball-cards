@@ -6,6 +6,7 @@ import aiohttp
 import requests
 from aiohttp import ClientSession
 from tenacity import retry, stop_after_attempt, wait_exponential
+from database.models import get_session
 
 
 # Placeholder function for parsing raw titles
@@ -159,6 +160,17 @@ async def fetch_cards(query: str, limit: int = 100):
             except Exception as e:
                 print(f"Error fetching cards: {e}")
                 break
+
+    session = get_session()
+    try:
+        for card in items[:limit]:
+            session.add(card)  # Add each card to the database session
+        session.commit()  # Commit the session after adding all cards
+    except Exception as e:
+        session.rollback()
+        print(f"Error saving cards to the database: {e}")
+    finally:
+        session.close()
 
     return items[:limit]
 

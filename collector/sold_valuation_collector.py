@@ -117,152 +117,192 @@ def collect_all_sold_and_valuations():
     current_run_start_time_iso = datetime.datetime.now(pytz.utc).isoformat()
 
     for site_conf_entry in sites_config:
+        process_site_config(site_conf_entry, current_run_start_time_iso)
+
+    # Ensure timestamp is updated even if no data is processed
+    for site_conf_entry in sites_config:
         site_name = site_conf_entry.get("name")
-        if not site_conf_entry.get("enabled", False):
-            logging.info(f"Skipping disabled site: {site_name}")
-            continue
-        if "collectors" not in site_conf_entry:
-            continue
-
-        for collector_details in site_conf_entry["collectors"]:
+        for collector_details in site_conf_entry.get("collectors", []):
             data_type_to_collect = collector_details.get("type")
-            if data_type_to_collect not in ["sold_items", "valuations"]:
-                continue
+            update_last_run_timestamp(site_name, data_type_to_collect, current_run_start_time_iso)
 
-            logging.info(
-                f"--- Starting collection for site: {site_name}, type: {data_type_to_collect} ---"
-            )
-            module_name = collector_details.get("module")
-            function_name = collector_details.get("function")
-
-            if not module_name or not function_name:
-                logging.error(
-                    f"Module/function missing for {site_name}/{data_type_to_collect}."
-                )
-                send_dashboard_notification(
-                    "ERROR",
-                    f"Config error for {site_name}/{data_type_to_collect}: Module/function missing.",
-                )
-                continue
-
-            last_run_ts = get_last_run_timestamp(site_name, data_type_to_collect)
-            logging.debug(
-                f"Last successful run for {site_name}/{data_type_to_collect}: {last_run_ts or 'Never'}"
-            )
-            try:
-                site_module = importlib.import_module(module_name)
-                site_function = getattr(site_module, function_name)
-                config_params = collector_details.get(
-                    "api_details", collector_details.get("scrape_details", {})
-                )
-                config_params["last_run_timestamp"] = last_run_ts
-                fetched_data_map = site_function(config_params)
-
-                if not isinstance(fetched_data_map, dict):
-                    logging.error(
-                        f"Site function {module_name}.{function_name} for {site_name} did not return a dictionary. Skipping."
-                    )
-                    send_dashboard_notification(
-                        "ERROR",
-                        f"Return type error for {site_name}/{data_type_to_collect}.",
-                    )
-                    continue
-
-                processed_successfully_for_site_type = (
-                    True  # Assume success unless an error specific to processing occurs
-                )
-                sold_items_from_site = fetched_data_map.get("sold_items", [])
-                if sold_items_from_site:
-                    logging.info(
-                        f"Received {len(sold_items_from_site)} SOLD items from {site_name}"
-                    )
-                    new_sold_added_count = 0
-                    for item_data in sold_items_from_site:
-                        if not all(
-                            k in item_data
-                            for k in [
-                                "raw_title",
-                                "sale_price",
-                                "sale_date",
-                                "source_item_id",
-                                "source_url",
-                            ]
-                        ):
-                            logging.warning(
-                                f"Skipping SOLD item from {site_name} due to missing essential fields: {
-                                    item_data.get(
-                                        'source_item_id', 'N/A')}"
-                            )
-                            continue
-                        if process_sold_item_data(item_data, site_name):
-                            new_sold_added_count += 1
-                    logging.info(
-                        f"{new_sold_added_count} new SOLD items added to DB from {site_name}."
-                    )
-
-                valuation_entries_from_site = fetched_data_map.get(
-                    "valuation_entries", []
-                )
-                if valuation_entries_from_site:
-                    logging.info(
-                        f"Received {len(valuation_entries_from_site)} VALUATION entries from {site_name}"
-                    )
-                    new_valuations_added_count = 0
-                    for val_data in valuation_entries_from_site:
-                        if not all(
-                            k in val_data
-                            for k in [
-                                "raw_card_name_from_source",
-                                "estimated_value",
-                                "valuation_date",
-                            ]
-                        ):
-                            logging.warning(
-                                f"Skipping VALUATION entry from {site_name} due to missing essential fields: {
-                                    val_data.get(
-                                        'raw_card_name_from_source', 'N/A')}"
-                            )
-                            continue
-                        if process_valuation_entry_data(val_data, site_name):
-                            new_valuations_added_count += 1
-                    logging.info(
-                        f"{new_valuations_added_count} new VALUATION entries added to DB from {site_name}."
-                    )
-
-                if (
-                    processed_successfully_for_site_type
-                ):  # This flag should be set to False in case of specific processing errors
-                    update_last_run_timestamp(
-                        site_name, data_type_to_collect, current_run_start_time_iso
-                    )
-            except ImportError:
-                logging.error(
-                    f"Failed to import module: {module_name} for {site_name}/{data_type_to_collect}."
-                )
-                send_dashboard_notification(
-                    "ERROR", f"ImportError: {site_name} - {module_name}."
-                )
-            except AttributeError:
-                logging.error(
-                    f"Failed to find function: {function_name} in {module_name} for {site_name}/{data_type_to_collect}."
-                )
-                send_dashboard_notification(
-                    "ERROR",
-                    f"AttributeError: {site_name} - {module_name}.{function_name}.",
-                )
-            except Exception as e:
-                logging.error(
-                    f"Unexpected error for {site_name}/{data_type_to_collect}: {e}"
-                )
-                send_dashboard_notification(
-                    "ERROR",
-                    f"Runtime error for {site_name}/{data_type_to_collect}: {str(e)}.",
-                )
-            finally:
-                logging.info(
-                    f"--- Finished collection attempt for site: {site_name}, type: {data_type_to_collect} ---"
-                )
     logging.info("--- Sold & Valuation Collection Cycle Finished ---")
+
+
+def process_site_config(site_conf_entry, current_run_start_time_iso):
+    site_name = site_conf_entry.get("name")
+    if not site_conf_entry.get("enabled", False):
+        logging.info(f"Skipping disabled site: {site_name}")
+        return
+    if "collectors" not in site_conf_entry:
+        return
+
+    for collector_details in site_conf_entry["collectors"]:
+        process_collector_details(
+            site_name, collector_details, current_run_start_time_iso
+        )
+
+
+def process_collector_details(site_name, collector_details, current_run_start_time_iso):
+    data_type_to_collect = collector_details.get("type")
+    if data_type_to_collect not in ["sold_items", "valuations"]:
+        return
+
+    logging.info(
+        f"--- Starting collection for site: {site_name}, type: {data_type_to_collect} ---"
+    )
+    module_name = collector_details.get("module")
+    function_name = collector_details.get("function")
+
+    if not module_name or not function_name:
+        log_and_notify_config_error(site_name, data_type_to_collect)
+        return
+
+    last_run_ts = get_last_run_timestamp(site_name, data_type_to_collect)
+    logging.debug(
+        f"Last successful run for {site_name}/{data_type_to_collect}: {last_run_ts or 'Never'}"
+    )
+    try:
+        fetched_data_map = fetch_data_from_site(
+            module_name, function_name, collector_details, last_run_ts
+        )
+        if not isinstance(fetched_data_map, dict):
+            log_and_notify_return_type_error(site_name, data_type_to_collect)
+            return
+
+        process_fetched_data(
+            site_name, data_type_to_collect, fetched_data_map, current_run_start_time_iso
+        )
+    except ImportError:
+        log_and_notify_import_error(site_name, module_name, data_type_to_collect)
+    except AttributeError:
+        log_and_notify_attribute_error(
+            site_name, module_name, function_name, data_type_to_collect
+        )
+    except Exception as e:
+        log_and_notify_runtime_error(site_name, data_type_to_collect, e)
+    finally:
+        logging.info(
+            f"--- Finished collection attempt for site: {site_name}, type: {data_type_to_collect} ---"
+        )
+
+
+def fetch_data_from_site(module_name, function_name, collector_details, last_run_ts):
+    site_module = importlib.import_module(module_name)
+    site_function = getattr(site_module, function_name)
+    config_params = collector_details.get(
+        "api_details", collector_details.get("scrape_details", {})
+    )
+    config_params["last_run_timestamp"] = last_run_ts
+    return site_function(config_params)
+
+
+def process_fetched_data(
+    site_name, data_type_to_collect, fetched_data_map, current_run_start_time_iso
+):
+    sold_items_from_site = fetched_data_map.get("sold_items", [])
+    sold_items_processed = process_sold_items(site_name, sold_items_from_site) if sold_items_from_site else True
+
+    valuation_entries_from_site = fetched_data_map.get("valuation_entries", [])
+    valuations_processed = process_valuation_entries(site_name, valuation_entries_from_site) if valuation_entries_from_site else True
+
+    if sold_items_processed and valuations_processed:
+        update_last_run_timestamp(
+            site_name, data_type_to_collect, current_run_start_time_iso
+        )
+
+
+def process_sold_items(site_name, sold_items_from_site):
+    logging.info(f"Received {len(sold_items_from_site)} SOLD items from {site_name}")
+    new_sold_added_count = 0
+    for item_data in sold_items_from_site:
+        if not all(
+            k in item_data
+            for k in [
+                "raw_title",
+                "sale_price",
+                "sale_date",
+                "source_item_id",
+                "source_url",
+            ]
+        ):
+            logging.warning(
+                f"Skipping SOLD item from {site_name} due to missing essential fields: {item_data.get('source_item_id', 'N/A')}"
+            )
+            continue
+        if process_sold_item_data(item_data, site_name):
+            new_sold_added_count += 1
+    logging.info(f"{new_sold_added_count} new SOLD items added to DB from {site_name}.")
+
+
+def process_valuation_entries(site_name, valuation_entries_from_site):
+    logging.info(
+        f"Received {len(valuation_entries_from_site)} VALUATION entries from {site_name}"
+    )
+    new_valuations_added_count = 0
+    for val_data in valuation_entries_from_site:
+        if not all(
+            k in val_data
+            for k in [
+                "raw_card_name_from_source",
+                "estimated_value",
+                "valuation_date",
+            ]
+        ):
+            logging.warning(
+                f"Skipping VALUATION entry from {site_name} due to missing essential fields: {val_data.get('raw_card_name_from_source', 'N/A')}"
+            )
+            continue
+        if process_valuation_entry_data(val_data, site_name):
+            new_valuations_added_count += 1
+    logging.info(
+        f"{new_valuations_added_count} new VALUATION entries added to DB from {site_name}."
+    )
+
+
+def log_and_notify_config_error(site_name, data_type_to_collect):
+    logging.error(f"Module/function missing for {site_name}/{data_type_to_collect}.")
+    send_dashboard_notification(
+        "ERROR",
+        f"Config error for {site_name}/{data_type_to_collect}: Module/function missing.",
+    )
+
+
+def log_and_notify_return_type_error(site_name, data_type_to_collect):
+    logging.error(
+        f"Site function for {site_name} did not return a dictionary. Skipping."
+    )
+    send_dashboard_notification(
+        "ERROR", f"Return type error for {site_name}/{data_type_to_collect}."
+    )
+
+
+def log_and_notify_import_error(site_name, module_name, data_type_to_collect):
+    logging.error(
+        f"Failed to import module: {module_name} for {site_name}/{data_type_to_collect}."
+    )
+    send_dashboard_notification(
+        "ERROR", f"ImportError: {site_name} - {module_name}."
+    )
+
+
+def log_and_notify_attribute_error(
+    site_name, module_name, function_name, data_type_to_collect
+):
+    logging.error(
+        f"Failed to find function: {function_name} in {module_name} for {site_name}/{data_type_to_collect}."
+    )
+    send_dashboard_notification(
+        "ERROR",
+        f"AttributeError: {site_name} - {module_name}.{function_name}.",
+    )
+
+
+def log_and_notify_runtime_error(site_name, data_type_to_collect, e):
+    logging.error(f"Unexpected error for {site_name}/{data_type_to_collect}: {e}")
+    send_dashboard_notification(
+        "ERROR", f"Runtime error for {site_name}/{data_type_to_collect}: {str(e)}."
+    )
 
 
 if __name__ == "__main__":
