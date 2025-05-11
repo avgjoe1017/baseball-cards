@@ -1,0 +1,8 @@
+# Cards to suppress deal alerts for (by card_id and/or grade)
+# Example:
+# - card_id: 123
+#   grade: PSA 10
+# - card_id: 456
+#   grade: Raw
+#- card_id: 1
+#  grade: PSA 9

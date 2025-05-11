@@ -1,0 +1,49 @@
+[
+  {
+    "name": "eBay",
+    "enabled": true,
+    "collectors": [
+      {
+        "type": "sold_items",
+        "module": "collector.adapters.ebay_sold_collector",
+        "function": "fetch_sold_items",
+        "api_details": {
+          "app_id": "YOUR_EBAY_APP_ID",
+          "cert_id": "YOUR_EBAY_CERT_ID",
+          "dev_id": "YOUR_EBAY_DEV_ID",
+          "oauth_refresh_token": "YOUR_EBAY_OAUTH_REFRESH_TOKEN"
+        }
+      },
+      {
+        "type": "valuations",
+        "module": "collector.adapters.ebay_valuation_collector",
+        "function": "fetch_valuations",
+        "api_details": {
+          "api_key": "YOUR_PRICE_GUIDE_API_KEY"
+        }
+      }
+    ]
+  },
+  {
+    "name": "SportsCardsPro",
+    "enabled": true,
+    "collectors": [
+      {
+        "type": "sold_items",
+        "module": "collector.adapters.sportscardspro_sold_collector",
+        "function": "fetch_sold_items",
+        "api_details": {
+          "api_token": "YOUR_SCP_API_TOKEN"
+        }
+      },
+      {
+        "type": "valuations",
+        "module": "collector.adapters.sportscardspro_valuation_collector",
+        "function": "fetch_valuations",
+        "api_details": {
+          "api_token": "YOUR_SCP_API_TOKEN"
+        }
+      }
+    ]
+  }
+]
