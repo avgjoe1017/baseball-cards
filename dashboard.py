@@ -23,7 +23,6 @@ from database.models import (
 
 # --- Helper to run async functions in Streamlit ---
 def run_async(func):
-    # Basic way to run async in sync streamlit; consider libraries like nest_asyncio if needed
     return asyncio.run(func)
 
 
@@ -472,9 +471,14 @@ with tabs[5]:
             saved_queries = json.load(f)
     else:
         saved_queries = ["PSA 10 Griffey UD 1989", "PSA 9 Jordan Rookie"]
-    queries = st.experimental_data_editor(
-        saved_queries, num_rows="dynamic", key="queries_editor"
+    # Replace st.experimental_data_editor with st.text_area for editing saved queries
+    queries = st.text_area(
+        "Edit Saved Queries (one per line):",
+        value="\n".join(saved_queries),
+        height=200,
+        key="queries_editor",
     )
+    queries = [query.strip() for query in queries.split("\n") if query.strip()]
     if st.button("Save Queries"):
         with open(queries_path, "w", encoding="utf-8") as f:
             json.dump(queries, f, indent=2)
